@@ -9,7 +9,7 @@ class CalculatorApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Simple Calculator',
+      title: 'Calculator',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorSchemeSeed: Colors.blue,
@@ -29,38 +29,104 @@ class CalculatorScreen extends StatefulWidget {
 
 class _CalculatorScreenState extends State<CalculatorScreen> {
   String expression = '';
-  String result = '';
+  String result = '0';
+  bool isResultShown = false;
+
 
   void onButtonPressed(String value) {
     setState(() {
       if (value == 'C') {
         expression = '';
-        result = '';
-      } else if (value == '⌫') {
+        result = '0';
+        isResultShown = false;
+      }
+      else if (value == '⌫') {
         if (expression.isNotEmpty) {
           expression = expression.substring(0, expression.length - 1);
+          _autoEvaluate();
+        } else {
+          result = '0';
         }
-      } else if (value == '=') {
-        try {
-          Parser parser = Parser();
-          Expression exp = parser.parse(
-              expression.replaceAll('×', '*').replaceAll('÷', '/'));
-          ContextModel cm = ContextModel();
-          double eval = exp.evaluate(EvaluationType.REAL, cm);
-          result = eval.toString();
-        } catch (e) {
-          result = 'Error';
+        isResultShown = false;
+      }
+      else if (value == '=') {
+        _evaluateExpression();
+        isResultShown = true;
+      }
+      else {
+        // start a new calculation
+        if (isResultShown && !_isOperator(value)) {
+          expression = '';
+          result = '0';
+          isResultShown = false;
         }
-      } else {
+
+        // Prevent starting with an operator
+        if (expression.isEmpty && _isOperator(value) && value != '-') return;
+
+        // Prevent multiple dots in a number
+        if (value == '.') {
+          final lastNumber = _getLastNumber(expression);
+          if (lastNumber.contains('.')) return;
+        }
+
+        // Prevent consecutive operators
+        if (_isOperator(value) &&
+            expression.isNotEmpty && _isOperator(expression.characters.last)) {
+          expression =
+              expression.substring(0, expression.length - 1) + value;
+          return;
+        }
+
         expression += value;
+        _autoEvaluate();
+        isResultShown = false;
       }
     });
+  }
+
+
+
+  void _evaluateExpression() {
+    try {
+      Parser parser = Parser();
+      Expression exp = parser.parse(
+          expression.replaceAll('×', '*').replaceAll('÷', '/'));
+      ContextModel cm = ContextModel();
+      double eval = exp.evaluate(EvaluationType.REAL, cm);
+      if (eval % 1 == 0) {
+        result = eval.toInt().toString();
+      } else {
+        result = eval.toStringAsFixed(6).replaceAll(RegExp(r'0+$'), '');
+      }
+    } catch (e) {
+      result = '';
+    }
+  }
+
+  void _autoEvaluate() {
+    if (expression.isEmpty) {
+      result = '';
+      return;
+    }
+    try {
+      _evaluateExpression();
+    } catch (_) {}
+  }
+
+  String _getLastNumber(String expr) {
+    final match = RegExp(r'(\d+\.?\d*)$').firstMatch(expr);
+    return match?.group(1) ?? '';
+  }
+
+  bool _isOperator(String x) {
+    return ['+', '-', '×', '÷', '='].contains(x);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[200],
+      backgroundColor: Colors.grey[100],
       body: SafeArea(
         child: OrientationBuilder(
           builder: (context, orientation) {
@@ -69,7 +135,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
             return Flex(
               direction: isLandscape ? Axis.horizontal : Axis.vertical,
               children: [
-                // output displayer
+                // output display
                 Expanded(
                   flex: isLandscape ? 4 : 3,
                   child: Container(
@@ -85,7 +151,9 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                           child: Text(
                             expression,
                             style: const TextStyle(
-                                fontSize: 28, color: Colors.black54),
+                              fontSize: 28,
+                              color: Colors.black54,
+                            ),
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -107,9 +175,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                   flex: isLandscape ? 6 : 5,
                   child: GridView.count(
                     crossAxisCount: 4,
-                    // landscape ratio (برای تغییر سایز دکمه ها واسه ریسپانسیو کردن) // پیر شدم تا ریسپانسیو کنم //
-                    childAspectRatio: isLandscape ? 1.9 : 1.0, // بخش اول برای لند اسکیپه بخش دوم برای حالت عمودی
-                    // ^^^^^^^^^^^^^^^^^^^^^^ //
+                    childAspectRatio: isLandscape ? 1.9 : 1.0,
                     padding: const EdgeInsets.all(8),
                     physics: const NeverScrollableScrollPhysics(),
                     children: [
@@ -120,34 +186,45 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                       '', '0', '.', '',
                     ].map((btn) {
                       if (btn.isEmpty) return const SizedBox.shrink();
+
+                      Color bgColor;
+                      Color textColor = Colors.black87;
+
+                      if (btn == 'C') {
+                        bgColor = Colors.red.shade100;
+                        textColor = Colors.red.shade800;
+                      } else if (btn == '=') {
+                        bgColor = Colors.blue;
+                        textColor = Colors.white;
+                      } else if (_isOperator(btn)) {
+                        bgColor = Colors.blue.shade100;
+                        textColor = Colors.blue.shade900;
+                      } else {
+                        bgColor = Colors.white;
+                      }
+
                       return Padding(
                         padding: const EdgeInsets.all(5.0),
-                        child: AspectRatio(
-                          aspectRatio: 1,
-                          child: ElevatedButton(
-                            onPressed: () => onButtonPressed(btn),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: _isOperator(btn)
-                                  ? Colors.blue.shade100 // operation button bg color
-                                  : Colors.white, // numeric bg buttons color
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
+                        child: ElevatedButton(
+                          onPressed: () => onButtonPressed(btn),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: bgColor,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
                             ),
-                            child: Text(
-                              btn,
-                              style: TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                                color: _isOperator(btn)
-                                    ? Colors.blue // operation text color
-                                    : Colors.black87, // numeric text color
-                              ),
+                            elevation: 1,
+                          ),
+                          child: Text(
+                            btn,
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              color: textColor,
                             ),
                           ),
                         ),
                       );
-                    }).toList()
+                    }).toList(),
                   ),
                 ),
               ],
@@ -156,9 +233,5 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
         ),
       ),
     );
-  }
-
-  bool _isOperator(String x) {
-    return ['+', '-', '×', '÷', '='].contains(x);
   }
 }
